@@ -1,0 +1,34 @@
+package raft
+impor(
+	leveldb "github.com/syndtr/goleveldb/leveldb"
+)
+
+func (s *Server) persistCommand(cmd Command){
+log.Println(s.Id(),"Server.persistCommand()")
+	
+	if s.State()!=Leader{
+		return newResponse(s.Id(), Redirect, s.Leader(), "")
+	}
+	switch cmd.Cmd{
+		case Get:
+			data, err := db.Get([]byte(cmd.Key), nil)
+			if err!=nil{
+				return newResponse(cmd.Id, Error, s.Leader(), "")
+			}else{
+				return newResponse(cmd.Id, Ok, s.Leader(), data)
+			}
+		case Put:
+			err = db.Put([]byte(cmd.Key), []byte(cmd.Value), nil)
+			if err!=nil{
+				return newResponse(cmd.Id, Error, s.Leader(), "")
+			}else{
+				return newResponse(cmd.Id, Ok, s.Leader(), "")
+			}
+		case Delete:
+			err = db.Delete([]byte(cmd.Key), nil)
+			if err!=nil{
+				return newResponse(cmd.Id, Error, s.Leader(), "")
+			}else{
+				return newResponse(cmd.Id, Ok, s.Leader(), "")
+			}
+	}
