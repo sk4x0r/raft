@@ -97,7 +97,6 @@ func (s *Server) Majority() int {
 func New(id int, configFile string) Server {
 	//log.Println("Server.New(",id,configFile,")")
 	conf := parseConfigFile(configFile)
-	db,_:=leveldb.OpenFile(strconv.Itoa(id)+"db", nil)
 	//kvstore,_:=leveldb.OpenFile(strconv.Itoa(id)+"kvstore", nil)
 	s := Server{
 		id:          id,
@@ -105,10 +104,10 @@ func New(id int, configFile string) Server {
 		state:       Stopped,
 		currentTerm: loadTermFromDisk(id),
 		peers:       conf.getPeers(id),
-		inbox:       make(chan Envelope),
-		outbox:      make(chan Envelope),
-		raftInbox:   make(chan Command),
-		raftOutbox:  make(chan Response),
+		inbox:       make(chan Envelope,10),
+		outbox:      make(chan Envelope,10),
+		raftInbox:   make(chan Command,10),
+		raftOutbox:  make(chan Response,10),
 		stopServer:  make(chan chan bool),
 		stopInbox:   make(chan chan bool),
 		stopOutbox:  make(chan chan bool),
@@ -116,42 +115,60 @@ func New(id int, configFile string) Server {
 		leader:      0,
 		peerInfo:    conf.getPeerInfo(id),
 		log:         newLog(id),
-		db:db,
 		//kvstore:kvstore,
 	}
-	//log.Println(s.id, s.peerInfo)
+	s.initializeSockets()
 	return s
 }
 
 func (s *Server) Start() {
-	//log.Println(s.Id(),s.Term(),"Server.Start()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.Start()")
 	//TODO: check if server is already started
 
+	db,_:=leveldb.OpenFile(strconv.Itoa(s.Id())+"db", nil)
+	s.db=db
 	s.setState(Follower)
-	s.initializeSockets()
 	go s.handleInbox()
 	go s.handleOutbox()
 	go s.mainLoop()
+	//log.Println(s.Id(),s.State(),"started------------->")
 }
 
 func (s *Server) Stop() {
-	//log.Println(s.Id(),s.Term(),"Server.Stop()")
-	serverStopped := make(chan bool)
+	s.db.Close()
+	serverStopped := make(chan bool)	
+	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.Stop()--------->")
 	s.stopServer <- serverStopped
-	s.state = Stopped
-	inboxStopped := make(chan bool)
-	s.stopInbox <- inboxStopped
-	outboxStopped := make(chan bool)
-	s.stopOutbox <- outboxStopped
-
+	//inboxStopped := make(chan bool)
+	//s.stopInbox <- inboxStopped
+	//outboxStopped := make(chan bool)
+	//s.stopOutbox <- outboxStopped
 	//wait till everything closes
-	<-serverStopped
-	<-inboxStopped
-	<-outboxStopped
+	//<-serverStopped
+	//<-inboxStopped
+	//<-outboxStopped
+	s.state = Stopped
+	s.leader=0
+	//keep discarting messages on raftinbox till server resumes
+	//go s.handleStoppedState()
+	log.Println(s.Id(),s.State(),"server stopped")
+}
+
+func (s *Server) handleStoppedState(){
+	raftInbox:=s.RaftInbox()
+	raftOutbox:=s.RaftOutbox()
+	for s.State()==Stopped{
+		select{
+			case <-raftInbox:
+				raftOutbox<-newResponse(Error,0,"")
+			case <-time.After(100*time.Millisecond):
+				
+			}
+	}
 }
 
 func (s *Server) initializeSockets() {
-	//log.Println(s.Id(),s.Term(),"Server.initializeSockets()")
+	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.initializeSockets()")
 	s.connections = make(map[int]*zmq.Socket)
 	for i := range s.peers {
 		peerId := s.peers[i]
@@ -168,7 +185,7 @@ func (s *Server) initializeSockets() {
 }
 
 func (s *Server) handleInbox() {
-	//log.Println(s.Id(),s.Term(),"Server.handleInbox()")
+	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.handleInbox()")
 
 	//create a socket to respond
 	responder, err := zmq.NewSocket(zmq.PULL)
@@ -179,18 +196,24 @@ func (s *Server) handleInbox() {
 
 	bindAddress := "tcp://*:" + strconv.Itoa(s.port)
 	responder.Bind(bindAddress)
-	responder.SetRcvtimeo(1000 * time.Millisecond) //TODO:adjust this
+	responder.SetRcvtimeo(100 * time.Millisecond) //TODO:adjust this
 
 	//keep looping till..
-	for {
+	for s.State() != Stopped {
+		//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.handleInbox()-->looping")
+
 		select {
 		//.. recieves kill signal
+		/*
 		case inboxStopped := <-s.stopInbox:
+			//log.Println(s.Id(),"stopping inbox")
 			//TODO: closing work
 
 			// and then send confirmation
 			inboxStopped <- true
+			//log.Println(s.Id(),"returning")
 			return
+		*/
 		//.. receives request
 		default:
 			req, err := responder.RecvBytes(0)
@@ -206,17 +229,18 @@ func (s *Server) handleInbox() {
 }
 
 func (s *Server) handleOutbox() {
-	//log.Println(s.Id(),s.Term(),"Server.handleOutbox()")
+	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.handleOutbox()")
 	//keep looping till...
-	for {
+	for s.State()!=Stopped{
 		select {
 		//receives kill signal
-		case outboxStopped := <-s.stopOutbox:
+		//case outboxStopped := <-s.stopOutbox:
 			//TODO: closing work
 
 			//and then send confirmation
-			outboxStopped <- true
-			return
+			//outboxStopped <- true
+			//log.Println(s.Id(),s.Term(),s.State(),s.State(),"handleOutbox stopped")
+			//return
 		//if message is received on outbox
 		case envelope := <-s.outbox:
 			if envelope.DestId == BROADCAST {
@@ -232,6 +256,8 @@ func (s *Server) handleOutbox() {
 				msg := envelopeToGob(envelope)
 				conn.SendBytes(msg, 0)
 			}
+		case <-time.After(200*time.Millisecond):
+			
 		}
 	}
 }
@@ -249,7 +275,7 @@ func(s *Server) persistTermOnDisk(term int64){
 	
 	err=ioutil.WriteFile(fileName, fileBytes, 0644)
 	if err!=nil{
-		panic("Error writing to disk"+ err.Error())
+		panic("Error writing to disk:"+ err.Error())
 	}
 	s.currentTerm=term
 }
@@ -259,15 +285,16 @@ func(s *Server) persistTermOnDisk(term int64){
 //It doesn't handle leader and state changes.
 //CAUTION:Should only be called from candidateLoop()
 func (s *Server) incrementTerm(){
-	//log.Println(s.Id(),s.Term(),"Server.incrementTerm()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.incrementTerm()")
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.currentTerm = s.currentTerm+1
 	s.persistTermOnDisk(s.currentTerm)
 }
 
+//updates current term and changes state to follower
 func (s *Server) updateCurrentTerm(term int64, leaderId int) {
-	//log.Println(s.Id(),s.Term(),"Server.updateCurrentTerm(",term,leaderId,")")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.updateCurrentTerm(",term,leaderId,")")
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.state == Leader {
@@ -286,7 +313,7 @@ func (s *Server) updateCurrentTerm(term int64, leaderId int) {
 }
 
 func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEntriesResponse {
-	//log.Println(s.Id(),s.Term(),"Server.processAppendEntriesRequest()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processAppendEntriesRequest()")
 	if req.Term < s.currentTerm {
 		//older term, rejecting
 		return newAppendEntriesResponse(s.currentTerm, false, s.Id(), s.log.CommitIndex())
@@ -328,7 +355,7 @@ func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEnt
 }
 
 func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteResponse {
-	//log.Println(s.Id(),s.Term(),"Server.processRequestVoteRequest()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteRequest()")
 
 	// If the request is coming from an old term then reject the vote
 	if req.Term < s.Term() {
@@ -356,7 +383,7 @@ func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteRe
 }
 
 func (s *Server) processRequestVoteResponse(req RequestVoteResponse) bool {
-	//log.Println(s.Id(),s.Term(),"Server.processRequestVoteResponse()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteResponse()")
 	if req.Term == s.Term() && req.VoteGranted == true {
 		return true
 	}
@@ -364,47 +391,48 @@ func (s *Server) processRequestVoteResponse(req RequestVoteResponse) bool {
 }
 
 func (s *Server) followerLoop() {
-	//log.Println(s.Id(),s.Term(),"Server.followerLoop()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop()")
 	for s.State() == Follower {
-		//log.Println(s.Id(),s.Term(),"Server.followerLoop()-->looping")
+		//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop()-->looping")
 		select {
+		
 		case serverStopped := <-s.stopServer:
 			//TODO: do cleaning
 			s.setState(Stopped)
 			//and send confirmation
 			serverStopped <- true
 			return
+		
 		case envelope := <-s.inbox:
 			switch req := envelope.Msg.(type) {
 			case AppendEntriesRequest:
-				log.Println(s.Id(),s.Term(),"Server.followerLoop(), appendEntriesRequest recvd on inbox",req)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), appendEntriesRequest recvd on inbox",req)
 				resp := s.processAppendEntriesRequest(req)
-				log.Println(s.Id(),s.Term(),"Server.followerLoop(), sending appendEntriesResponse",resp)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), sending appendEntriesResponse",resp)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteRequest:
-				//log.Println(s.Id(),s.Term(),"Server.followerLoop(), RequestVoteRequest recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), RequestVoteRequest recvd on inbox")
 				resp := s.processRequestVoteRequest(req)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			}
 		case command:= <-s.raftInbox:
-				//log.Println(s.Id(),s.Term(),"Server.followerLoop(), Command recvd on raftinbox")
-				//log.Println("<------------------------rcvd------------------------>")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), Command recvd on raftinbox")
 				resp:=s.processCommand(command)
 				raftOutbox:=s.RaftOutbox()
 				raftOutbox <- resp
 		case <-time.After(electionTimeout()): //TODO: check whether this is electionTimeout or heartbeatTimeout
-			//log.Println(s.Id(),s.Term(),"Server.followerLoop(), timed out, going for election")
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), timed out, going for election")
 			s.setState(Candidate)
 		}
 	}
 }
 
 func (s *Server) createVoteRequest() Envelope {
-	//log.Println(s.Id(),s.Term(),"Server.createVoteRequest()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.createVoteRequest()")
 	//create a broadcast message asking for vote
 	lastLogIndex, lastLogTerm := s.log.lastInfo()
 	req := newRequestVoteRequest(s.Term(), s.Id(), lastLogIndex, lastLogTerm)
@@ -413,12 +441,12 @@ func (s *Server) createVoteRequest() Envelope {
 }
 
 func (s *Server) candidateLoop() {
-	log.Println(s.Id(),s.Term(),"Server.candidateLoop()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop()")
 	firstIteration := true
 	var voteCount int
 	var timeout <-chan time.Time
 	for s.State() == Candidate {
-		//log.Println(s.Id(),s.Term(),"Server.candidateLoop()-->looping")
+		//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop()-->looping")
 		if firstIteration {
 			//increment current term, and set leader to none
 			s.incrementTerm()
@@ -450,21 +478,21 @@ func (s *Server) candidateLoop() {
 		case envelope := <-s.inbox:
 			switch req := envelope.Msg.(type) {
 			case AppendEntriesRequest:
-				log.Println(s.Id(),s.Term(),"Server.candidateLoop(), appendEntriesRqst recvd on inbox",req)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), appendEntriesRqst recvd on inbox",req)
 				resp := s.processAppendEntriesRequest(req)
-				log.Println(s.Id(),s.Term(),"Server.candidateLoop(), sending appendEntriesResponse",resp)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), sending appendEntriesResponse",resp)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteRequest:
-				//log.Println(s.Id(),s.Term(),"Server.candidateLoopLoop(), RequestVoteRqst recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), RequestVoteRqst recvd on inbox")
 				s.processRequestVoteRequest(req)
 				resp := s.processRequestVoteRequest(req)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteResponse:
-				//log.Println(s.Id(),s.Term(),"Server.candidateLoopLoop(), RequestVoteResponse recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), RequestVoteResponse recvd on inbox")
 				if s.processRequestVoteResponse(req) {
 					voteCount++
 					if voteCount >= s.Majority() {
@@ -474,22 +502,21 @@ func (s *Server) candidateLoop() {
 				}
 			}
 		case command:= <-s.raftInbox:
-				//log.Println(s.Id(),s.Term(),"Server.candidateLoop(), Command recvd on raftinbox")
-				//log.Println("<------------------------rcvd------------------------>")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), Command recvd on raftinbox")
 				resp:=s.processCommand(command)
 				raftOutbox:=s.RaftOutbox()
 				raftOutbox <- resp
 		case <-timeout:
-			//log.Println(s.Id(),s.Term(),"Server.candidateLoopLoop(), timed out, going for reelection")
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoopLoop(), timed out, going for reelection")
 			firstIteration = true
 		}
 	}
 }
 
 func (s *Server) processCommand(cmd Command) Response {
-	log.Println(s.Id(),s.Term(),"Server.processCommand(",cmd,")")
+	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.processCommand(",cmd,")")
 	if s.State()!=Leader{
-		log.Println(s.Id(),s.Term(),"Server.processCommand()--> not a leader")
+		//log.Println(s.Id(),s.Term(),s.State(),"Server.processCommand()--> not a leader")
 		return newResponse(Redirect, s.LeaderId(), "")
 	}
 	switch cmd.Cmd{
@@ -516,7 +543,7 @@ func (s *Server) processCommand(cmd Command) Response {
 }
 
 func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
-	log.Println(s.Id(),s.Term(),"Server.processAppendEntriesResponse()", resp)
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processAppendEntriesResponse()", resp)
 	if resp.Term > s.Term() {
 		s.updateCurrentTerm(resp.Term, 0)
 		return
@@ -539,16 +566,16 @@ func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 	}
 
 	//if resp.Success == true 
-	log.Println("Setting peer in sync for",resp.PeerId)
+	//log.Println("Setting peer in sync for",resp.PeerId)
 	s.peersInSync[resp.PeerId] = true
 	p := s.peerInfo[resp.PeerId]
-	log.Println("Setting prevlogindex for",resp.PeerId,"as",resp.CommitIndex)
+	//log.Println("Setting prevlogindex for",resp.PeerId,"as",resp.CommitIndex)
 	p.setPrevLogIndex(resp.CommitIndex)
 	s.peerInfo[resp.PeerId]=p
 	
-	log.Println("confirmation:p.prevLogIndex=")
+	//log.Println("confirmation:p.prevLogIndex=")
 	p=s.peerInfo[resp.PeerId]
-	log.Println(p.getPrevLogIndex())
+	//log.Println(p.getPrevLogIndex())
 	if len(s.peersInSync) < s.Majority() {
 		//some more peers need before starting commits
 		return
@@ -558,14 +585,14 @@ func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 	//TODO: write sort interface for int64 and remove sortutil
 	indices := make(sortutil.Int64Slice, 0)
 	indices = append(indices, s.log.CurrentIndex())
-	log.Println(s.log.CurrentIndex())
+	//log.Println(s.log.CurrentIndex())
 	for _, peer := range s.peerInfo {
 		indices = append(indices, peer.getPrevLogIndex())
 	}
 	log.Println(s.Id(),indices)
 	indices.Sort()
 	
-	log.Println(s.Id(),indices)
+	//log.Println(s.Id(),indices)
 	commitIndex := indices[s.Majority()-1]
 	prevCommitIndex := s.log.commitIndex
 
@@ -578,6 +605,7 @@ func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 
 //TODO: error handling
 func (s *Server) persistEntries(entries []LogItem){
+	log.Println(s.Id(), "adding entries to db:",entries)
 	for _, entry:=range entries{
 		entry_str,_:=json.Marshal(entry)
 		s.db.Put([]byte(strconv.FormatInt(entry.Index,10)), []byte(entry_str), nil)
@@ -585,70 +613,74 @@ func (s *Server) persistEntries(entries []LogItem){
 }
 
 func (s *Server) startHeartbeats() {
-	//log.Println(s.Id(),s.Term(),"Server.startHeartbeats()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.startHeartbeats()")
 	for s.State() == Leader {
 		select {
 		case <-time.After(heartbeatInterval()):
+			//log.Println(s.Id(),s.Term(),s.State(),"Sending Heartbeats")
+			s.mutex.RLock()
 			for _, peer := range s.peerInfo {
 				hb := peer.generateHeartbeat()
 				e := newEnvelope(s.Id(), peer.Pid, hb)
 				outbox := s.Outbox()
 				outbox <- e
 			}
+			s.mutex.RUnlock()
 		}
 	}
 }
 
 func (s *Server) leaderLoop() {
-	//log.Println(s.Id(),s.Term(),"Server.leaderLoop()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop()")
 	logIndex, _ := s.log.lastInfo()
 	for _, peer := range s.peerInfo {
 		peer.setPrevLogIndex(logIndex)
 	}
 	go s.startHeartbeats()
 	for s.State() == Leader {
-		//log.Println(s.Id(),s.Term(),"Server.leaderLoop() --> looping")
+		//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop() --> looping")
 		select {
 		case serverStopped := <-s.stopServer:
-			//log.Println(s.Id(),s.Term(),"Server.leaderLoop() --> case serverStopped")
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop() --> case serverStopped")
 			//TODO: do cleaning
 			s.setState(Stopped)
 			//and send confirmation
 			serverStopped <- true
+			//log.Println(s.Id(),s.Term(),s.State(),"exiting leaderLoop")
 			return
 		case envelope := <-s.inbox:
-			log.Println(s.Id(),s.Term(),"Server.leaderLoop() --> case envelope on inbox")
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop() --> case envelope on inbox")
 			switch req := envelope.Msg.(type) {
 			case AppendEntriesRequest:
-				log.Println(s.Id(),s.Term(),"Server.leaderLoop(), appendEntriesRqst recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), appendEntriesRqst recvd on inbox")
 				resp := s.processAppendEntriesRequest(req)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteRequest:
-				log.Println(s.Id(),s.Term(),"Server.leaderLoop(), RqstVoteRqst recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), RqstVoteRqst recvd on inbox")
 				resp := s.processRequestVoteRequest(req)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 				s.processRequestVoteRequest(req)
 			case AppendEntriesResponse:
-				log.Println(s.Id(),s.Term(),"Server.leaderLoop(), appendEntriesResponse recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), appendEntriesResponse recvd on inbox")
 				s.processAppendEntriesResponse(req)
 			}
 		case command:= <-s.raftInbox:
-			log.Println(s.Id(),s.Term(),"Server.leaderLoop(), Command recvd on raftinbox")
-			log.Println("<------------------------rcvd------------------------>")
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), Command recvd on raftinbox")
 			resp:=s.processCommand(command)
-			log.Println(s.Id(),s.Term(),"Server.leaderLoop(), sending response to raftoutbox",resp)
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), sending response to raftoutbox",resp)
 			raftOutbox:=s.RaftOutbox()
 			raftOutbox <- resp
 		}
 	}
+	//log.Println(s.Id(),s.Term(),s.State(),"exiting leaderLoop()")
 }
 
 func (s *Server) mainLoop() {
-	//log.Println(s.Id(),s.Term(),"Server.mainLoop()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.mainLoop()")
 	for s.State() != Stopped {
 		switch s.State() {
 		case Follower:
@@ -674,7 +706,7 @@ func (s *Server) State() string {
 
 //TODO: check whenever state is being updated, whether leader is also being updated or not
 func (s *Server) setState(state string) {
-	//log.Println(s.Id(),s.Term(),"Server.setState(",state,")")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.setState(",state,")")
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.state = state

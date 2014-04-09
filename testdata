@@ -1,0 +1,15 @@
+Server id at start_server: 1001
+2014/04/09 17:33:16 Server.New( 1001 config.json )
+Server id at start_server: 1003
+2014/04/09 17:33:16 Server.New( 1003 config.json )
+2014/04/09 17:33:17 1002 0 stopped stopped Server.initializeSockets()
+2014/04/09 17:33:17 1003 0 stopped stopped Server.initializeSockets()
+2014/04/09 17:33:17 1003 0 stopped Server.Start()
+2014/04/09 17:33:17 1001 0 stopped Server.setState( follower )
+2014/04/09 17:33:17 1003 0 stopped Server.setState( follower )
+2014/04/09 17:33:17 1001 follower started------------->
+2014/04/09 17:33:17 1002 0 stopped Server.Start()
+2014/04/09 17:33:17 1002 0 stopped Server.setState( follower )
+2014/04/09 17:33:17 1002 follower started------------->
+PASS
+ok  	github.com/sk4x0r/raft	15.127s
