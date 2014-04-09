@@ -3,8 +3,6 @@ package raft
 import (
 	//"fmt"
 	"log"
-	//"math/rand"
-	//"math"
 	"time"
 	"io/ioutil"
 	"encoding/json"
