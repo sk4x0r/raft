@@ -15,8 +15,8 @@ import (
 const (
 	BROADCAST          = -1
 	PATH_TO_CONFIG     = "config.json"
-	ELECTION_TIMEOUT   = 4000 //in millisecond
-	HEARTBEAT_INTERVAL = 500 //in millisecond
+	ELECTION_TIMEOUT   = 300 //in millisecond
+	HEARTBEAT_INTERVAL = 50 //in millisecond
 )
 
 func heartbeatInterval() time.Duration {

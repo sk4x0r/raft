@@ -344,11 +344,20 @@ func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEnt
 
 	// Commit up to the commit index
 	//Current implementation of setCommitIndex always returns nil
+	//TODO: move the code below to func setCommitIndex()
+	prevCommitIndex:=s.log.CommitIndex()
+	commitIndex:=req.LeaderCommit
+	if prevCommitIndex < commitIndex{
+		log.Println(s.Id(),s.State(),"Recvd commit idx:",commitIndex)
+		sliceToCommit:=s.log.entries[prevCommitIndex+1:commitIndex+1]
+		s.persistEntries(sliceToCommit)
+	}
 	if err := s.log.setCommitIndex(req.LeaderCommit); err != nil {
 		return newAppendEntriesResponse(s.currentTerm, false, s.Id(), s.log.CommitIndex())
 	}
 
 	//if everything goes well, send success
+	log.Println(s.Id(),s.State(),"Sending back response commit idx:",s.log.CurrentIndex())
 	return newAppendEntriesResponse(s.currentTerm, true, s.Id(), s.log.CurrentIndex())//CAUTION: sending currentIndex instead of commitIndex
 }
 
@@ -596,9 +605,9 @@ func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 
 	if commitIndex > prevCommitIndex {
 		s.log.setCommitIndex(commitIndex)
+		sliceToCommit:=s.log.entries[prevCommitIndex+1:commitIndex+1]
+		s.persistEntries(sliceToCommit)
 	}
-	sliceToCommit:=s.log.entries[prevCommitIndex+1:commitIndex+1]
-	s.persistEntries(sliceToCommit)
 }
 
 //TODO: error handling
@@ -623,6 +632,7 @@ func (s *Server) startHeartbeats() {
 				outbox := s.Outbox()
 				outbox <- e
 			}
+			
 			s.mutex.RUnlock()
 		}
 	}

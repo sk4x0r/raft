@@ -100,9 +100,9 @@ func send(cmd Command, servers map[int]Server) (Response,Server){
 	return Response{},s
 }
 
-func startServers() map[int]Server{
-	servers:=make(map[int]Server,3)
-	for i:=1001;i<=1003;i++{
+func startServers(n int) map[int]Server{
+	servers:=make(map[int]Server,n)
+	for i:=1001;i<=1000+n;i++{
 		s:=New(i,PATH_TO_CONFIG)
 		s.Start()
 		servers[i]=s
@@ -145,8 +145,8 @@ func killServers(servers map[int]Server){
 }
 
 func TestNormalRaft(t *testing.T) {
-/*	cleanFiles()
-	servers:=startServers()
+	cleanFiles()
+	servers:=startServers(5)
 	time.Sleep(10*time.Second)
 	
 	for i:=1;i<=5;i++{
@@ -162,9 +162,10 @@ func TestNormalRaft(t *testing.T) {
 		//}
 		time.Sleep(500*time.Millisecond)
 	}
+	time.Sleep(2*time.Second)
 	log.Printf("baaher")
 	killServers(servers)
-*/	_=checkConsistency(3)//len(servers))
+	_=checkConsistency(len(servers))
 	//time.Sleep(10*time.Second)
 }
 
@@ -190,7 +191,7 @@ func readLevelDb(n int){
 		for iter.Next() {
 			key := iter.Key()
 			value := iter.Value()
-			fobj.Write([]byte(string(key)+string(value)))
+			fobj.Write([]byte(string(key)+string(value)+"\n"))
 		}
 		iter.Release()
 		err = iter.Error()
@@ -201,7 +202,7 @@ func readLevelDb(n int){
 
 func checkConsistency(n int) bool{
 	consistent:=false
-	//readLevelDb(n)
+	readLevelDb(n)
 	
 	var matching int = 0
 	var output bytes.Buffer
