@@ -5,6 +5,7 @@ import (
 	"time"
 	"strconv"
 	"os"
+	"log"
 	"math/rand"
 	"os/exec"
 	"fmt"
@@ -256,7 +257,7 @@ func TestNormal(t *testing.T) {
 		cmd[i].Start()
 	}																																																																																									
 	
-	time.Sleep(5*electionTimeout())
+	time.Sleep(20*time.Second)
 	
 	for i:=0; i<5;i++ {
 		cmd[i].Process.Kill()
@@ -265,7 +266,9 @@ func TestNormal(t *testing.T) {
 	time.Sleep(2*time.Second)
 	success:=checkConsistency(5)
 	if !success{
-		t.Fatalf("Test Multiple Restarts failed")
+		t.Fatalf("Test Normal Operations - Failed")
+	}else{
+		log.Println("Test Normal Operations - Success")
 	}
 }
 
@@ -284,7 +287,7 @@ func TestMultipleRestarts(t *testing.T) {
 		cmd[i].Start()
 	}
 		
-	time.Sleep(2*electionTimeout())
+	time.Sleep(5*time.Second)
 	
 	for i:=0; i<10;i++ {
 		cmd[i%5].Process.Kill()
@@ -305,6 +308,8 @@ func TestMultipleRestarts(t *testing.T) {
 	time.Sleep(2*time.Second)
 	success:=checkConsistency(5)
 	if !success{
-		t.Fatalf("Test Multiple Restarts failed")
+		t.Fatalf("Test Multiple Restarts - Failed")
+	}else{
+		log.Println("Test Multiple Restarts - Success")
 	}
 }
