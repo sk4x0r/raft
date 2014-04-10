@@ -1,1 +1,0 @@
-[{"Index":0,"Term":1,"Data":{"Cmd":"put","Key":"key1","Value":"val1"}},{"Index":1,"Term":1,"Data":{"Cmd":"put","Key":"key2","Value":"val2"}},{"Index":2,"Term":1,"Data":{"Cmd":"put","Key":"key3","Value":"val3"}},{"Index":3,"Term":1,"Data":{"Cmd":"put","Key":"key4","Value":"val4"}},{"Index":4,"Term":1,"Data":{"Cmd":"put","Key":"key5","Value":"val5"}}]
