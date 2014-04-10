@@ -14,14 +14,16 @@ type Log struct {
 	mutex       sync.RWMutex
 	fileName    string
 	path        string
+	serverId    int
 }
 
 func newLog(serverId int) Log {
 	l := Log{
 		fileName:    strconv.Itoa(serverId) + "_log_entries.log",
-		commitIndex: -1,
+		serverId: serverId,
 	}
 	l.loadEntriesFromDisk()
+	l.loadCommitIndexFromDisk()
 	return l
 }
 
@@ -85,7 +87,49 @@ func (l *Log) loadEntriesFromDisk() {
 	if err != nil {
 		l.entries = make([]LogItem, 0)
 	}
-	err = json.Unmarshal(fileBytes, &(l.entries))
+	_ = json.Unmarshal(fileBytes, &(l.entries))
+}
+
+
+
+type CommitIndexJson struct {
+	CommitIndex int64
+}
+
+func (l *Log) loadCommitIndexFromDisk(){
+	var commitIndex int64
+	fileName := strconv.Itoa(l.serverId) + ".ci"
+	fileBytes, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		//log.Println("Unable to find term stored on disk")
+	}
+	var ciJson CommitIndexJson
+	err = json.Unmarshal(fileBytes, &ciJson)
+	if err != nil {
+		//log.Print("Error while unmarshalling. Initializing the term to zero")
+		commitIndex=-1
+	} else {
+		commitIndex = ciJson.CommitIndex
+	}
+	l.mutex.Lock()
+	l.commitIndex=commitIndex
+	l.mutex.Unlock()
+}
+
+
+func (l *Log) saveCommitIndexToDisk(){
+	fileName:=strconv.Itoa(l.serverId)+".ci"
+	ciJson:=CommitIndexJson{l.CommitIndex()}
+	
+	fileBytes, err := json.Marshal(ciJson)
+	if err!=nil{
+		panic("Error while marshalling"+err.Error())
+	}
+	
+	err=ioutil.WriteFile(fileName, fileBytes, 0644)
+	if err!=nil{
+		panic("Error writing to disk:"+ err.Error())
+	}
 }
 
 func (l *Log) appendEntry(entry LogItem) error {
@@ -118,6 +162,7 @@ func (l *Log) setCommitIndex(index int64) error {
 	}
 
 	l.commitIndex = index
+	l.saveCommitIndexToDisk()
 	return nil
 }
 

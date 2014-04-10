@@ -7,8 +7,8 @@ import (
 	"log"
 	"strconv"
 	"os"
-	"os/exec"
 	"math/rand"
+	"os/exec"
 	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
 	"bytes"
@@ -38,21 +38,41 @@ func cleanFiles(){
     os.RemoveAll("1004db")
     os.RemoveAll("1005db")
     os.RemoveAll("1006db")
+    os.RemoveAll("1001db.txt")
+    os.RemoveAll("1002db.txt")
+    os.RemoveAll("1003db.txt")
+    os.RemoveAll("1004db.txt")
+    os.RemoveAll("1005db.txt")
+    os.RemoveAll("1006db.txt")
     os.Remove("1001.term")
     os.Remove("1002.term")
     os.Remove("1003.term")
     os.Remove("1004.term")
     os.Remove("1005.term")
     os.Remove("1006.term")
+    os.Remove("1001.ci")
+    os.Remove("1002.ci")
+    os.Remove("1003.ci")
+    os.Remove("1004.ci")
+    os.Remove("1005.ci")
+    os.Remove("1006.ci")
     os.Remove("1001_log_entries.log")
     os.Remove("1002_log_entries.log")
     os.Remove("1003_log_entries.log")
     os.Remove("1004_log_entries.log")
     os.Remove("1005_log_entries.log")
     os.Remove("1006_log_entries.log")
+    
+    /*
+    cmd:= exec.Command("rm","-r","100*")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stdout
+	cmd.Start()
+	*/
 }
 
 func selectRandomServer(servers map[int]Server) Server{
+	log.Println("selecting random server")
 	slice:=make([]int, 0)
 	for key, _:=range servers{
 		slice=append(slice,key)
@@ -67,6 +87,7 @@ func selectRandomServer(servers map[int]Server) Server{
 		idx:=slice[randIdx]
 		s=servers[idx]
 	}
+	log.Println("random server=",s.Id())
 	return s
 }
 
@@ -110,30 +131,6 @@ func startServers(n int) map[int]Server{
 	return servers
 }
 
-
-	/*
-	var cmd []*exec.Cmd
-	cmd = make([]*exec.Cmd, 3)
-	
-	for i:=0; i<3; i++ {
-		command := strconv.Itoa(1001 + i)
-		cmd[i] = exec.Command("./start_server/start_server", command)
-		cmd[i].Stdout = os.Stdout
-		cmd[i].Stderr = os.Stdout
-		cmd[i].Start()
-		
-	}																																																																																												
-	
-	time.Sleep(5*time.Second)
-	
-	for i:=0; i<3;i++ {
-		cmd[i].Process.Kill()
-		log.Println("Killed")
-	}
-	time.Sleep(2*time.Second)
-	*/				
-
-
 func killServers(servers map[int]Server){
 	log.Println("stopping")
 	for _,s:=range servers{
@@ -142,31 +139,6 @@ func killServers(servers map[int]Server){
 	}
 	log.Println("stopped")
 	time.Sleep(2*time.Second)
-}
-
-func TestNormalRaft(t *testing.T) {
-	cleanFiles()
-	servers:=startServers(5)
-	time.Sleep(10*time.Second)
-	
-	for i:=1;i<=5;i++{
-		log.Println("i=",i)
-		cmd:=newCommand(Put, "key"+strconv.Itoa(i),"val"+strconv.Itoa(i))
-		//log.Println("command:",cmd)
-		_,_=send(cmd, servers)
-		//log.Println("reply:",rply)
-		//if i%2==0{
-			//leader.Stop()
-			//time.Sleep(2*time.Second)
-			//leader.Start()
-		//}
-		time.Sleep(500*time.Millisecond)
-	}
-	time.Sleep(2*time.Second)
-	log.Printf("baaher")
-	killServers(servers)
-	_=checkConsistency(len(servers))
-	//time.Sleep(10*time.Second)
 }
 
 
@@ -231,3 +203,96 @@ func checkConsistency(n int) bool{
 	fmt.Println("Total match;",matching)
 	return consistent
 }
+
+
+func TestOne(t *testing.T){
+		log.Println("testone")
+		cleanFiles()
+		log.Println("Starting servers")
+		servers:=startServers(5)
+		log.Println("Servers started")
+		time.Sleep(10*time.Second)
+
+		for i:=1;i<=5;i++{
+		log.Println("i=",i)
+		cmd:=newCommand(Put, "key"+strconv.Itoa(i),"val"+strconv.Itoa(i))
+		//log.Println("command:",cmd)
+		_,_=send(cmd, servers)
+		//log.Println("reply:",rply)
+		//if i%2==0{
+		//leader.Stop()
+		//time.Sleep(2*time.Second)
+		//leader.Start()
+		//}
+		time.Sleep(500*time.Millisecond)
+		}
+		time.Sleep(2*time.Second)
+		killServers(servers)
+		_=checkConsistency(len(servers))
+		//time.Sleep(10*time.Second) 
+}
+
+
+/*
+func TestNormal(t *testing.T) {
+	cleanFiles()	
+	var cmd []*exec.Cmd
+	cmd = make([]*exec.Cmd, 5)
+	
+	for i:=0; i<5; i++ {
+		command := strconv.Itoa(1001 + i)
+		cmd[i] = exec.Command("./start_server/start_server", command)
+		cmd[i].Stdout = os.Stdout
+		cmd[i].Stderr = os.Stdout
+		cmd[i].Start()
+	}																																																																																												
+	
+	time.Sleep(5*time.Second)
+	
+	for i:=0; i<5;i++ {
+		cmd[i].Process.Kill()
+		log.Println("Killed")
+	}
+	time.Sleep(2*time.Second)
+	_=checkConsistency(5)
+	//time.Sleep(10*time.Second)
+}
+*/
+
+/*
+func TestGlitches(t *testing.T) {
+	cleanFiles()	
+	var cmd []*exec.Cmd
+	cmd = make([]*exec.Cmd, 5)
+	
+	for i:=0; i<5; i++ {
+		arg := strconv.Itoa(1001 + i)
+		cmd[i] = exec.Command("./start_server/start_server", arg)
+		cmd[i].Stdout = os.Stdout
+		cmd[i].Stderr = os.Stdout
+		cmd[i].Start()
+	}
+		
+	time.Sleep(10*time.Second)
+	
+	for i:=0; i<5;i++ {
+		cmd[i].Process.Kill()
+		log.Println("Killed",i)
+		time.Sleep(5*time.Second)
+		arg := strconv.Itoa(1001 + i)
+		cmd[i] = exec.Command("./start_server/start_server", arg)
+		cmd[i].Stdout = os.Stdout
+		cmd[i].Stderr = os.Stdout
+		cmd[i].Start()
+	}
+	
+	for i:=0; i<5;i++ {
+		cmd[i].Process.Kill()
+		log.Println("Killed")
+	}
+	
+	time.Sleep(2*time.Second)
+	_=checkConsistency(5)
+	//time.Sleep(10*time.Second)
+}
+*/

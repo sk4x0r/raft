@@ -132,6 +132,7 @@ func (s *Server) Start() {
 	//log.Println(s.Id(),s.State(),"started------------->")
 }
 
+
 func (s *Server) Stop() {
 	s.db.Close()
 	serverStopped := make(chan bool)	
@@ -149,7 +150,7 @@ func (s *Server) Stop() {
 	s.leader=0
 	//keep discarting messages on raftinbox till server resumes
 	//go s.handleStoppedState()
-	log.Println(s.Id(),s.State(),"server stopped")
+	//log.Println(s.Id(),s.State(),"server stopped")
 }
 
 func (s *Server) handleStoppedState(){
@@ -237,7 +238,7 @@ func (s *Server) handleOutbox() {
 
 			//and then send confirmation
 			//outboxStopped <- true
-			//log.Println(s.Id(),s.Term(),s.State(),s.State(),"handleOutbox stopped")
+			////log.Println(s.Id(),s.Term(),,s.State(),"handleOutbox stopped")
 			//return
 		//if message is received on outbox
 		case envelope := <-s.outbox:
@@ -248,7 +249,7 @@ func (s *Server) handleOutbox() {
 					msg := envelopeToGob(envelope)
 					conn.SendBytes(msg, 0)
 				}
-			} else {
+			}else{
 				peerId := envelope.DestId
 				conn := s.connections[peerId]
 				msg := envelopeToGob(envelope)
@@ -348,7 +349,7 @@ func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEnt
 	prevCommitIndex:=s.log.CommitIndex()
 	commitIndex:=req.LeaderCommit
 	if prevCommitIndex < commitIndex{
-		log.Println(s.Id(),s.State(),"Recvd commit idx:",commitIndex)
+		//log.Println(s.Id(),s.State(),"Recvd commit idx:",commitIndex)
 		sliceToCommit:=s.log.entries[prevCommitIndex+1:commitIndex+1]
 		s.persistEntries(sliceToCommit)
 	}
@@ -357,7 +358,7 @@ func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEnt
 	}
 
 	//if everything goes well, send success
-	log.Println(s.Id(),s.State(),"Sending back response commit idx:",s.log.CurrentIndex())
+	//log.Println(s.Id(),s.State(),"Sending back response commit idx:",s.log.CurrentIndex())
 	return newAppendEntriesResponse(s.currentTerm, true, s.Id(), s.log.CurrentIndex())//CAUTION: sending currentIndex instead of commitIndex
 }
 
@@ -535,7 +536,7 @@ func (s *Server) processCommand(cmd Command) Response {
 			}else{
 				return newResponse(Ok, s.LeaderId(), string(data))
 			}
-		// for put and delete, command will be executed after it gets replicated on majority of the servers
+		// for put and delete, command should be executed after it gets replicated on majority of the servers
 		case Put:
 			entry := s.log.newLogEntry(s.Term(), cmd) //TODO: error handling
 			s.log.appendEntry(entry)                  //TODO:error handling
@@ -612,7 +613,7 @@ func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 
 //TODO: error handling
 func (s *Server) persistEntries(entries []LogItem){
-	log.Println(s.Id(), "adding entries to db:",entries)
+	//log.Println(s.Id(), "adding entries to db:",entries)
 	for _, entry:=range entries{
 		entry_str,_:=json.Marshal(entry)
 		s.db.Put([]byte(strconv.FormatInt(entry.Index,10)), []byte(entry_str), nil)
@@ -705,7 +706,7 @@ func (s *Server) mainLoop() {
 }
 
 func (s *Server) State() string {
-	//log.Println(s.Id(),s.Term(),"Server.State()")
+	////log.Println(s.Id(),s.Term(),"Server.State()")
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	state := s.state
