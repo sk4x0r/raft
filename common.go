@@ -15,8 +15,8 @@ import (
 const (
 	BROADCAST          = -1
 	PATH_TO_CONFIG     = "config.json"
-	ELECTION_TIMEOUT   = 3000 //in millisecond
-	HEARTBEAT_INTERVAL = 500 //in millisecond
+	ELECTION_TIMEOUT   = 300 //in millisecond
+	HEARTBEAT_INTERVAL = 50 //in millisecond
 )
 
 func heartbeatInterval() time.Duration {
@@ -38,18 +38,21 @@ func gobToEnvelope(gobbed []byte) Envelope {
 	return envelope
 }
 
-//cite: http://blog.golang.org/gobs-of-data
-//cite: Pushkar Khadilkar
-func envelopeToGob(envelope Envelope) []byte {
-	//log.Println("envelopeToGob-->",envelope)
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
+
+func registerGob(){
 	gob.Register(AppendEntriesRequest{})
 	gob.Register(AppendEntriesResponse{})
 	gob.Register(RequestVoteRequest{})
 	gob.Register(RequestVoteResponse{})
 	gob.Register(Command{})
 	gob.Register(LogItem{})
+}
+//cite: http://blog.golang.org/gobs-of-data
+//cite: Pushkar Khadilkar
+func envelopeToGob(envelope Envelope) []byte {
+	//log.Println("envelopeToGob-->",envelope)
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(envelope)
 	if err != nil {
 		log.Fatal("encode error:", err,envelope)

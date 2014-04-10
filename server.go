@@ -95,6 +95,7 @@ func (s *Server) Majority() int {
 func New(id int, configFile string) Server {
 	//log.Println("Server.New(",id,configFile,")")
 	conf := parseConfigFile(configFile)
+	//log.Println(conf)
 	//kvstore,_:=leveldb.OpenFile(strconv.Itoa(id)+"kvstore", nil)
 	s := Server{
 		id:          id,
@@ -119,10 +120,11 @@ func New(id int, configFile string) Server {
 	return s
 }
 
+
 func (s *Server) Start() {
 	//log.Println(s.Id(),s.Term(),s.State(),"Server.Start()")
 	//TODO: check if server is already started
-
+	registerGob()
 	db,_:=leveldb.OpenFile(strconv.Itoa(s.Id())+"db", nil)
 	s.db=db
 	s.setState(Follower)
@@ -195,6 +197,7 @@ func (s *Server) handleInbox() {
 
 	bindAddress := "tcp://*:" + strconv.Itoa(s.port)
 	responder.Bind(bindAddress)
+	//log.Println(s.Id(),"Started listening on port",s.port)
 	responder.SetRcvtimeo(100 * time.Millisecond) //TODO:adjust this
 
 	//keep looping till..
@@ -312,7 +315,7 @@ func (s *Server) updateCurrentTerm(term int64, leaderId int) {
 }
 
 func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEntriesResponse {
-	//log.Println(s.Id(),s.Term(),s.State(),"Server.processAppendEntriesRequest()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processAppendEntriesRequest()",req)
 	if req.Term < s.currentTerm {
 		//older term, rejecting
 		return newAppendEntriesResponse(s.currentTerm, false, s.Id(), s.log.CommitIndex())
@@ -363,10 +366,11 @@ func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEnt
 }
 
 func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteResponse {
-	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteRequest()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteRequest()",req)
 
 	// If the request is coming from an old term then reject the vote
 	if req.Term < s.Term() {
+		//log.Println(s.Id(),s.Term(),s.State(),"processRqVoteRqst() Request is coming from an older term",req)
 		return newRequestVoteResponse(s.currentTerm, false)
 	}
 
@@ -375,6 +379,7 @@ func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteRe
 		s.updateCurrentTerm(req.Term, 0)
 	} else if s.votedFor != 0 {
 		//else if vote is already casted for current term then reject the vote
+		//log.Println(s.Id(),s.Term(),s.State(),"processRqVoteRqst() Already voted for this term",req)
 		return newRequestVoteResponse(s.currentTerm, false)
 	}
 
@@ -382,6 +387,7 @@ func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteRe
 	//TODO: remove lastInfo()
 	lastIndex, lastTerm := s.log.lastInfo()
 	if lastIndex > req.LastLogIndex || lastTerm > req.LastLogTerm {
+		//log.Println(s.Id(),s.Term(),s.State(),"processRqVoteRqst() Candidate's log is not upto date",req)
 		return newRequestVoteResponse(s.currentTerm, false)
 	}
 
@@ -391,7 +397,7 @@ func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteRe
 }
 
 func (s *Server) processRequestVoteResponse(req RequestVoteResponse) bool {
-	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteResponse()")
+	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteResponse()",req)
 	if req.Term == s.Term() && req.VoteGranted == true {
 		return true
 	}
@@ -412,6 +418,7 @@ func (s *Server) followerLoop() {
 			return
 		
 		case envelope := <-s.inbox:
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), recvd msg on inbox",envelope)
 			switch req := envelope.Msg.(type) {
 			case AppendEntriesRequest:
 				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), appendEntriesRequest recvd on inbox",req)
@@ -421,15 +428,17 @@ func (s *Server) followerLoop() {
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteRequest:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), RequestVoteRequest recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), RequestVoteRequest recvd on inbox",req)
 				resp := s.processRequestVoteRequest(req)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), sending RequestVoteResponse",resp)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			}
 		case command:= <-s.raftInbox:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), Command recvd on raftinbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), Command recvd on raftinbox",command)
 				resp:=s.processCommand(command)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), sending Response for command",resp)
 				raftOutbox:=s.RaftOutbox()
 				raftOutbox <- resp
 		case <-time.After(electionTimeout()): //TODO: check whether this is electionTimeout or heartbeatTimeout
@@ -462,12 +471,14 @@ func (s *Server) candidateLoop() {
 			s.votedFor = s.Id()
 
 			//create vote requests
+			//log.Println(s.Id(),s.State(), "Creating vote requests")
 			voteRequest := s.createVoteRequest()
 
 			//send vote requests
 			outbox := s.Outbox()
 			outbox <- voteRequest
-
+			
+			//log.Println(s.Id(),s.State(), "Sent vote requests")
 			//initialize vote count with self vote
 			voteCount = 1
 			//start timer
@@ -493,14 +504,15 @@ func (s *Server) candidateLoop() {
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteRequest:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), RequestVoteRqst recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), RequestVoteRqst recvd on inbox",req)
 				s.processRequestVoteRequest(req)
 				resp := s.processRequestVoteRequest(req)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), sending RequestVoteResponse",resp)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteResponse:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), RequestVoteResponse recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), RequestVoteResponse recvd on inbox",req)
 				if s.processRequestVoteResponse(req) {
 					voteCount++
 					if voteCount >= s.Majority() {
@@ -510,8 +522,9 @@ func (s *Server) candidateLoop() {
 				}
 			}
 		case command:= <-s.raftInbox:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), Command recvd on raftinbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), Command recvd on raftinbox",command)
 				resp:=s.processCommand(command)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.candidateLoop(), sending command response",resp)
 				raftOutbox:=s.RaftOutbox()
 				raftOutbox <- resp
 		case <-timeout:
@@ -597,7 +610,7 @@ func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 	for _, peer := range s.peerInfo {
 		indices = append(indices, peer.getPrevLogIndex())
 	}
-	log.Println(s.Id(),indices)
+	//log.Println(s.Id(),indices)
 	indices.Sort()
 	
 	//log.Println(s.Id(),indices)
@@ -661,24 +674,26 @@ func (s *Server) leaderLoop() {
 			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop() --> case envelope on inbox")
 			switch req := envelope.Msg.(type) {
 			case AppendEntriesRequest:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), appendEntriesRqst recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), appendEntriesRqst recvd on inbox",req)
 				resp := s.processAppendEntriesRequest(req)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), sending reply to appendEntriesRequest",resp)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 			case RequestVoteRequest:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), RqstVoteRqst recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), RqstVoteRqst recvd on inbox",req)
 				resp := s.processRequestVoteRequest(req)
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), sending reply to RequestVoteRequest",resp)
 				e := newEnvelope(s.Id(), envelope.SourceId, resp)
 				outbox := s.Outbox()
 				outbox <- e
 				s.processRequestVoteRequest(req)
 			case AppendEntriesResponse:
-				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), appendEntriesResponse recvd on inbox")
+				//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), appendEntriesResponse recvd on inbox",req)
 				s.processAppendEntriesResponse(req)
 			}
 		case command:= <-s.raftInbox:
-			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), Command recvd on raftinbox")
+			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), Command recvd on raftinbox",command)
 			resp:=s.processCommand(command)
 			//log.Println(s.Id(),s.Term(),s.State(),"Server.leaderLoop(), sending response to raftoutbox",resp)
 			raftOutbox:=s.RaftOutbox()
@@ -706,7 +721,6 @@ func (s *Server) mainLoop() {
 }
 
 func (s *Server) State() string {
-	////log.Println(s.Id(),s.Term(),"Server.State()")
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	state := s.state

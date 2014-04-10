@@ -205,14 +205,16 @@ func checkConsistency(n int) bool{
 }
 
 
-func TestOne(t *testing.T){
+
+func _TestOne(t *testing.T){
 		log.Println("testone")
 		cleanFiles()
 		log.Println("Starting servers")
 		servers:=startServers(5)
 		log.Println("Servers started")
-		time.Sleep(10*time.Second)
-
+		time.Sleep(30*time.Second)
+		
+		
 		for i:=1;i<=5;i++{
 		log.Println("i=",i)
 		cmd:=newCommand(Put, "key"+strconv.Itoa(i),"val"+strconv.Itoa(i))
@@ -233,8 +235,7 @@ func TestOne(t *testing.T){
 }
 
 
-/*
-func TestNormal(t *testing.T) {
+func _TestNormal(t *testing.T) {
 	cleanFiles()	
 	var cmd []*exec.Cmd
 	cmd = make([]*exec.Cmd, 5)
@@ -245,9 +246,9 @@ func TestNormal(t *testing.T) {
 		cmd[i].Stdout = os.Stdout
 		cmd[i].Stderr = os.Stdout
 		cmd[i].Start()
-	}																																																																																												
+	}																																																																																									
 	
-	time.Sleep(5*time.Second)
+	time.Sleep(2*electionTimeout())
 	
 	for i:=0; i<5;i++ {
 		cmd[i].Process.Kill()
@@ -257,9 +258,9 @@ func TestNormal(t *testing.T) {
 	_=checkConsistency(5)
 	//time.Sleep(10*time.Second)
 }
-*/
 
-/*
+
+
 func TestGlitches(t *testing.T) {
 	cleanFiles()	
 	var cmd []*exec.Cmd
@@ -273,7 +274,7 @@ func TestGlitches(t *testing.T) {
 		cmd[i].Start()
 	}
 		
-	time.Sleep(10*time.Second)
+	time.Sleep(2*electionTimeout())
 	
 	for i:=0; i<5;i++ {
 		cmd[i].Process.Kill()
@@ -295,4 +296,3 @@ func TestGlitches(t *testing.T) {
 	_=checkConsistency(5)
 	//time.Sleep(10*time.Second)
 }
-*/

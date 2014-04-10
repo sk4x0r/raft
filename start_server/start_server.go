@@ -14,6 +14,7 @@ func main(){
 	log.Println("Server id at start_server:",id)
 	s:=raft.New(id,PATH_TO_CONFIG)
 	s.Start()
+	time.Sleep(10*time.Second)
 	inbox:=s.RaftInbox()
 	outbox:=s.RaftOutbox()
 	for i:=0;i<10000;i++{
