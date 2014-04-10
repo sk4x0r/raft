@@ -5,6 +5,7 @@ const(
 	Delete="delete"
 )
 
+//This structure is used by client to send command to raft
 type Command struct {
 	Cmd string
 	Key string
@@ -25,6 +26,7 @@ const(
 	Redirect="redirect"
 )
 
+//this struct is used by raft to send back response to client
 type Response struct{
 	Status string
 	LeaderId int

@@ -1,5 +1,5 @@
 package raft
-
+//struct to store log entry
 type LogItem struct {
 	Index int64
 	Term  int64

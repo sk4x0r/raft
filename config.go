@@ -1,10 +1,7 @@
 package raft
-
 import (
 	"log"
-	//"os"
 	"encoding/json"
-	//zmq "github.com/pebbe/zmq4"
 	"io/ioutil"
 	"strconv"
 )

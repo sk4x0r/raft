@@ -50,6 +50,7 @@ func (l *Log) CommitIndex() int64 {
 	return l.commitIndex
 }
 
+//cite: https://github.com/goraft/raft
 func (l *Log) lastInfo() (index int64, term int64) {
 	l.mutex.RLock()
 	defer l.mutex.RUnlock()
@@ -166,6 +167,9 @@ func (l *Log) setCommitIndex(index int64) error {
 	return nil
 }
 
+//cite: https://github.com/goraft/raft
+//This method truncates the log till previous matching entry
+//Entries after matched previousLogIndex are discarded using this method
 func (l *Log) truncate(index int64, term int64) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()

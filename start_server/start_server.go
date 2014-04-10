@@ -3,7 +3,6 @@ import (
 	raft "github.com/sk4x0r/raft"
 	"os"
 	"strconv"
-	"log"
 	"time"
 	"math/rand"
 )
@@ -11,7 +10,7 @@ const 	PATH_TO_CONFIG     = "config.json"
 
 func main(){
 	id, _ := strconv.Atoi((os.Args[1]))
-	log.Println("Server id at start_server:",id)
+	//log.Println("start_server:",id)
 	s:=raft.New(id,PATH_TO_CONFIG)
 	s.Start()
 	time.Sleep(10*time.Second)
@@ -19,10 +18,10 @@ func main(){
 	outbox:=s.RaftOutbox()
 	for i:=0;i<10000;i++{
 		cmd:=newRandomCommand()
-		log.Println("sending command", cmd)
+		//log.Println("sending command", cmd)
 		inbox <-cmd
-		rply:=<-outbox
-		log.Println("Received reply",rply)
+		<-outbox
+		//log.Println("Received reply",rply)
 		time.Sleep(500*time.Millisecond)
 	}
 }

@@ -1,10 +1,8 @@
 package raft
 
 import (
-	//"fmt"
 	"testing"
 	"time"
-	"log"
 	"strconv"
 	"os"
 	"math/rand"
@@ -15,12 +13,13 @@ import (
 	"strings"
 )
 
+//This function, takes input a map of servers, and return the leader among them
 func findLeader(servers map[int]Server) Server{
 	for true{
 		for _,server:=range servers{
-			log.Println(server.Id(),server.State())
+			//log.Println(server.Id(),server.State())
 			if server.Leader(){
-				log.Println("leader found")
+				//log.Println("leader found")
 				return server
 			}
 			time.Sleep(100*time.Millisecond)
@@ -71,8 +70,9 @@ func cleanFiles(){
 	*/
 }
 
+//This function, takes input a map of servers and, returns a randomly selected server among them
 func selectRandomServer(servers map[int]Server) Server{
-	log.Println("selecting random server")
+	//log.Println("selecting random server")
 	slice:=make([]int, 0)
 	for key, _:=range servers{
 		slice=append(slice,key)
@@ -87,10 +87,12 @@ func selectRandomServer(servers map[int]Server) Server{
 		idx:=slice[randIdx]
 		s=servers[idx]
 	}
-	log.Println("random server=",s.Id())
+	//log.Println("random server=",s.Id())
 	return s
 }
 
+//This method takes a command and list of servers as arguemnt,
+//and sends the command to leader.
 func send(cmd Command, servers map[int]Server) (Response,Server){
 	s:=selectRandomServer(servers)
 	for true{
@@ -103,7 +105,7 @@ func send(cmd Command, servers map[int]Server) (Response,Server){
 			case <-time.After(1*time.Second):
 				r=newResponse(Error,0,"")
 		}
-		log.Println(s.Id(),r)
+		//log.Println(s.Id(),r)
 		if r.Status==Ok{
 			return r,s
 		}else if r.Status==Redirect{
@@ -132,16 +134,16 @@ func startServers(n int) map[int]Server{
 }
 
 func killServers(servers map[int]Server){
-	log.Println("stopping")
+	//log.Println("stopping")
 	for _,s:=range servers{
-		log.Println("killing",s.Id())
+		//log.Println("killing",s.Id())
 		s.Stop()
 	}
-	log.Println("stopped")
+	//log.Println("stopped")
 	time.Sleep(2*time.Second)
 }
 
-
+//cite: Sagar sontakke
 func readLevelDb(n int){
 	for i:=0;i<n;i++{
 		dbname:=strconv.Itoa(i+1001)+"db"
@@ -172,19 +174,20 @@ func readLevelDb(n int){
 	}
 }
 
+//cite: Sagar Sontakke
 func checkConsistency(n int) bool{
 	consistent:=false
 	readLevelDb(n)
 	
-	var matching int = 0
+	consistentCount:=0
+	majority:=n/2+1
 	var output bytes.Buffer
 	for i:=0; i<n;i++ {
+		consistentCount=1
 		for j:=i+1;j<n;j++ {
-			
-
 			file1 := strconv.Itoa(i+1001) + "db.txt"
 			file2 := strconv.Itoa(j+1001) + "db.txt"
-			fmt.Println("comparing",file1,file2)
+			//fmt.Println("comparing",file1,file2)
 			diff := exec.Command("diff", file1, file2)
 			diff.Stdout = &output
 
@@ -194,29 +197,32 @@ func checkConsistency(n int) bool{
 			out := string(output.Bytes())
 			match := strings.TrimSpace(string(out))
 			if match == "" {
-				matching = matching + 1
+				consistentCount++
+				if consistentCount>=majority{
+					consistent:=true
+					return consistent
+				}
 			}
 			output.Reset()
 		}
 		
 	}
-	fmt.Println("Total match;",matching)
+	fmt.Println("Consistency count;",consistentCount)
 	return consistent
 }
 
 
-
 func _TestOne(t *testing.T){
-		log.Println("testone")
+		//log.Println("testone")
 		cleanFiles()
-		log.Println("Starting servers")
+		//log.Println("Starting servers")
 		servers:=startServers(5)
-		log.Println("Servers started")
+		//log.Println("Servers started")
 		time.Sleep(30*time.Second)
 		
 		
 		for i:=1;i<=5;i++{
-		log.Println("i=",i)
+		//log.Println("i=",i)
 		cmd:=newCommand(Put, "key"+strconv.Itoa(i),"val"+strconv.Itoa(i))
 		//log.Println("command:",cmd)
 		_,_=send(cmd, servers)
@@ -230,12 +236,14 @@ func _TestOne(t *testing.T){
 		}
 		time.Sleep(2*time.Second)
 		killServers(servers)
-		_=checkConsistency(len(servers))
-		//time.Sleep(10*time.Second) 
+		success:=checkConsistency(len(servers))
+		if !success{
+		t.Fatalf("Test Multiple Restarts failed")
+	}
 }
 
 
-func _TestNormal(t *testing.T) {
+func TestNormal(t *testing.T) {
 	cleanFiles()	
 	var cmd []*exec.Cmd
 	cmd = make([]*exec.Cmd, 5)
@@ -248,20 +256,22 @@ func _TestNormal(t *testing.T) {
 		cmd[i].Start()
 	}																																																																																									
 	
-	time.Sleep(2*electionTimeout())
+	time.Sleep(5*electionTimeout())
 	
 	for i:=0; i<5;i++ {
 		cmd[i].Process.Kill()
-		log.Println("Killed")
+		//log.Println("Killed")
 	}
 	time.Sleep(2*time.Second)
-	_=checkConsistency(5)
-	//time.Sleep(10*time.Second)
+	success:=checkConsistency(5)
+	if !success{
+		t.Fatalf("Test Multiple Restarts failed")
+	}
 }
 
 
 
-func TestGlitches(t *testing.T) {
+func TestMultipleRestarts(t *testing.T) {
 	cleanFiles()	
 	var cmd []*exec.Cmd
 	cmd = make([]*exec.Cmd, 5)
@@ -276,23 +286,25 @@ func TestGlitches(t *testing.T) {
 		
 	time.Sleep(2*electionTimeout())
 	
-	for i:=0; i<5;i++ {
-		cmd[i].Process.Kill()
-		log.Println("Killed",i)
-		time.Sleep(5*time.Second)
-		arg := strconv.Itoa(1001 + i)
-		cmd[i] = exec.Command("./start_server/start_server", arg)
-		cmd[i].Stdout = os.Stdout
-		cmd[i].Stderr = os.Stdout
-		cmd[i].Start()
+	for i:=0; i<10;i++ {
+		cmd[i%5].Process.Kill()
+		//log.Println("Killed",i%5)
+		time.Sleep(1*time.Second)
+		arg := strconv.Itoa(1001 + (i%5))
+		cmd[i%5] = exec.Command("./start_server/start_server", arg)
+		cmd[i%5].Stdout = os.Stdout
+		cmd[i%5].Stderr = os.Stdout
+		cmd[i%5].Start()
 	}
 	
 	for i:=0; i<5;i++ {
 		cmd[i].Process.Kill()
-		log.Println("Killed")
+		//log.Println("Killed")
 	}
 	
 	time.Sleep(2*time.Second)
-	_=checkConsistency(5)
-	//time.Sleep(10*time.Second)
+	success:=checkConsistency(5)
+	if !success{
+		t.Fatalf("Test Multiple Restarts failed")
+	}
 }

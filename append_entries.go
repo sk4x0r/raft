@@ -5,7 +5,7 @@ type AppendEntriesRequest struct {
 	LeaderId     int        //so follower can redirect clients
 	PrevLogIndex int64      //index of log entry immediately preceding new ones
 	PrevLogTerm  int64      //term of prevLogIndex entry
-	Entries      []LogItem //log items to store (empty for heartbeat; may send more than one for efficiency)
+	Entries      []LogItem //log items to store
 	LeaderCommit int64      //leader’s commitIndex
 }
 
@@ -24,8 +24,8 @@ func newAppendEntriesRequest(term int64, leaderId int, prevLogIndex int64, prevL
 type AppendEntriesResponse struct {
 	Term        int64 //currentTerm, for leader to update itself
 	Success     bool  //true if follower contained entry matching prevLogIndex and prevLogTerm
-	PeerId      int
-	CommitIndex int64
+	PeerId      int //id of client
+	CommitIndex int64 // commit index of client
 }
 
 func newAppendEntriesResponse(term int64, success bool, peerId int, commitIndex int64) AppendEntriesResponse {

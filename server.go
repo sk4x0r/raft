@@ -1,7 +1,6 @@
 package raft
 
 import (
-	//"fmt"
 	"log"
 	"time"
 	"io/ioutil"
@@ -95,7 +94,6 @@ func (s *Server) Majority() int {
 func New(id int, configFile string) Server {
 	//log.Println("Server.New(",id,configFile,")")
 	conf := parseConfigFile(configFile)
-	//log.Println(conf)
 	//kvstore,_:=leveldb.OpenFile(strconv.Itoa(id)+"kvstore", nil)
 	s := Server{
 		id:          id,
@@ -123,7 +121,6 @@ func New(id int, configFile string) Server {
 
 func (s *Server) Start() {
 	//log.Println(s.Id(),s.Term(),s.State(),"Server.Start()")
-	//TODO: check if server is already started
 	registerGob()
 	db,_:=leveldb.OpenFile(strconv.Itoa(s.Id())+"db", nil)
 	s.db=db
@@ -135,6 +132,10 @@ func (s *Server) Start() {
 }
 
 
+//depriciated
+//Tries to pause server activity
+//This method doesnt clean up the resources, and has several issues
+//Avoid using this
 func (s *Server) Stop() {
 	s.db.Close()
 	serverStopped := make(chan bool)	
@@ -151,10 +152,11 @@ func (s *Server) Stop() {
 	s.state = Stopped
 	s.leader=0
 	//keep discarting messages on raftinbox till server resumes
-	//go s.handleStoppedState()
+	go s.handleStoppedState()
 	//log.Println(s.Id(),s.State(),"server stopped")
 }
 
+//This method keeps discarding messsages received on raftInbox while server is in stopped / paused state.
 func (s *Server) handleStoppedState(){
 	raftInbox:=s.RaftInbox()
 	raftOutbox:=s.RaftOutbox()
@@ -185,6 +187,8 @@ func (s *Server) initializeSockets() {
 	}
 }
 
+//This method opens an incoming port for communication among the servers,
+//keeps listening on it and forward the incoming requests to inbox
 func (s *Server) handleInbox() {
 	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.handleInbox()")
 
@@ -230,6 +234,8 @@ func (s *Server) handleInbox() {
 	}
 }
 
+//This method handles keeps listening on outbox,
+//and forward the messages from outbox to respective servers
 func (s *Server) handleOutbox() {
 	//log.Println(s.Id(),s.Term(),s.State(),s.State(),"Server.handleOutbox()")
 	//keep looping till...
@@ -294,6 +300,7 @@ func (s *Server) incrementTerm(){
 	s.persistTermOnDisk(s.currentTerm)
 }
 
+
 //updates current term and changes state to follower
 func (s *Server) updateCurrentTerm(term int64, leaderId int) {
 	//log.Println(s.Id(),s.Term(),s.State(),"Server.updateCurrentTerm(",term,leaderId,")")
@@ -314,15 +321,17 @@ func (s *Server) updateCurrentTerm(term int64, leaderId int) {
 	s.persistTermOnDisk(term)
 }
 
+//cite: https://github.com/goraft/raft
+//As the name suggests, the method processes appendEntry requests
 func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEntriesResponse {
 	//log.Println(s.Id(),s.Term(),s.State(),"Server.processAppendEntriesRequest()",req)
 	if req.Term < s.currentTerm {
 		//older term, rejecting
 		return newAppendEntriesResponse(s.currentTerm, false, s.Id(), s.log.CommitIndex())
 	}
-
+	
 	if req.Term == s.currentTerm {
-		if s.state == Leader {
+		if s.State() == Leader {
 			//this should never happen
 			panic("Multiple leaders for the same term")
 		}
@@ -365,9 +374,12 @@ func (s *Server) processAppendEntriesRequest(req AppendEntriesRequest) AppendEnt
 	return newAppendEntriesResponse(s.currentTerm, true, s.Id(), s.log.CurrentIndex())//CAUTION: sending currentIndex instead of commitIndex
 }
 
+//cite: https://github.com/goraft/raft
+//As the name suggests, the method processes requestVote requests
+
 func (s *Server) processRequestVoteRequest(req RequestVoteRequest) RequestVoteResponse {
 	//log.Println(s.Id(),s.Term(),s.State(),"Server.processRequestVoteRequest()",req)
-
+	
 	// If the request is coming from an old term then reject the vote
 	if req.Term < s.Term() {
 		//log.Println(s.Id(),s.Term(),s.State(),"processRqVoteRqst() Request is coming from an older term",req)
@@ -441,7 +453,7 @@ func (s *Server) followerLoop() {
 				//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), sending Response for command",resp)
 				raftOutbox:=s.RaftOutbox()
 				raftOutbox <- resp
-		case <-time.After(electionTimeout()): //TODO: check whether this is electionTimeout or heartbeatTimeout
+		case <-time.After(electionTimeout()):
 			//log.Println(s.Id(),s.Term(),s.State(),"Server.followerLoop(), timed out, going for election")
 			s.setState(Candidate)
 		}
@@ -545,7 +557,7 @@ func (s *Server) processCommand(cmd Command) Response {
 		case Get:
 			data, err := s.db.Get([]byte(cmd.Key), nil)
 			if err!=nil{
-				return newResponse(Error, s.LeaderId(), "")
+				return newResponse(Error, s.LeaderId(), "KEY_NOT_FOUND")
 			}else{
 				return newResponse(Ok, s.LeaderId(), string(data))
 			}
@@ -563,6 +575,9 @@ func (s *Server) processCommand(cmd Command) Response {
 	return newResponse(Error, s.LeaderId(), "")
 }
 
+
+//cite: https://github.com/goraft/raft
+//As the name suggests, the method processes appendEntry responses
 func (s *Server) processAppendEntriesResponse(resp AppendEntriesResponse) {
 	//log.Println(s.Id(),s.Term(),s.State(),"Server.processAppendEntriesResponse()", resp)
 	if resp.Term > s.Term() {
