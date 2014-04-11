@@ -42,10 +42,11 @@ Commands can be sent to server over `inbox` and processed output is received ove
 ```
 inbox:=s1.RaftInbox()
 outbox:=s1.RaftOutbox()
-//if cmd is a command I want to send then
+//if 'cmd' is a command I want to send then
 inbox <-c1
 //after processing the command by server, result is sent on outbox
 resp:= <-outbox
+//now 'resp' contains the output after processing command 'cmd'
 ```
 
 # License
