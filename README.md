@@ -5,7 +5,16 @@ This is a `go` implementation of Raft consensus algorithm. Raft is a consensus a
 #Installation and Test
 
 ```
+// get the sourcecode
 go get github.com/sk4x0r/raft
+//switch current working directory to source directory
+cd go/src/github.com/sk4x0r/raft
+//build the executable for code in folder `start_server`
+cd start_server
+go build start_server.go
+//get back to source code dictionary
+cd ..
+//execute the test
 go test github.com/sk4x0r/raft
 ```
 
